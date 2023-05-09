@@ -59,9 +59,8 @@ def get_closest_array(suggested_x, var_array):
     var_list = var_array
     modified_array = []
     for x in suggested_x:
-        print(x)
         modified_array.append([get_closest_value(x[i], var_list[i]) for i in range(len(x))])
-    print(modified_array)
+        
     return np.array(modified_array)
 
 
@@ -223,10 +222,6 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, v
     y_pred_mean = np.array(x1x2y_pred, dtype=object)[:, 3].reshape(n_steps, n_steps)
     y_pred_min = np.array(x1x2y_pred, dtype=object)[:, 4].reshape(n_steps, n_steps)
 
-    y_uncer_max = np.array(x1x2y_uncer, dtype=object)[:, 2].reshape(n_steps, n_steps)
-    y_uncer_mean = np.array(x1x2y_uncer, dtype=object)[:, 3].reshape(n_steps, n_steps)
-    y_uncer_min = np.array(x1x2y_uncer, dtype=object)[:, 4].reshape(n_steps, n_steps)
-
     fs = 20
     title_pad = 16
 
@@ -252,6 +247,7 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, v
     axes[0].set_title('objective fcn max', pad=title_pad, fontsize=fs)
     axes[1].set_title('objective fcn mean', pad=title_pad, fontsize=fs)
     axes[2].set_title('objective fcn min', pad=title_pad, fontsize=fs)
+    plt.show()
 
 
 class ProbabilisticConstraintBayesianOptimizationLoop2(OuterLoop):
