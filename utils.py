@@ -13,9 +13,8 @@ from emukit.bayesian_optimization.acquisitions import ExpectedImprovement, Negat
 import scipy.stats
 import GPy
 from GPy.models import GPRegression
-import matplotlib as plt
+import matplotlib.pyplot as plt
 
-np.random.seed(10)
 
 def get_array_and_len(min, max, step):
     """ Get array and its length for process condition options. """
@@ -98,11 +97,12 @@ def get_rbf_kernel(input_dim):
     return ker
 
 
-def get_gpr_model(X, Y, ker):
+def get_gpr_model(X, Y, ker, set_noise=False):
     """ Build a GPR model based on an input array X, a target array Y, and a kernel ker. """
     model_gpy = GPRegression(X , -Y, ker)#Emukit is a minimization tool; need to make Y negative
-    model_gpy.Gaussian_noise.variance = 1.5**2
-    model_gpy.Gaussian_noise.variance.fix()
+    if set_noise:
+        model_gpy.Gaussian_noise.variance = 1.5**2
+        model_gpy.Gaussian_noise.variance.fix()
     model_gpy.randomize()
     model_gpy.optimize_restarts(num_restarts=20,verbose=False, messages=False)
 
@@ -129,7 +129,7 @@ def generate_visualization_suggested_process_conditions(df, n_col, var_array):
         plt.show()
 
 
-def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, acq_cons, acq_produc):
+def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, acq_cons, acq_produc, var_array):
     """ Generate plots of efficiency vs. machine learning conditions."""
     device_eff = df_device.sort_values('Condition').iloc[:,[0,-2]].values
     film_quality = df_film.sort_values('Condition').iloc[:,[0,-1]].values
@@ -148,7 +148,7 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].plot(np.transpose(all_cond)[0], np.maximum.accumulate(np.transpose(all_cond)[1]), 
          marker = 'o', ms = 0, c = 'black')
 
-    X_sorted = x_scaler(df_film.sort_values('Condition').iloc[:,1:10].values)
+    X_sorted = x_scaler(df_film.sort_values('Condition').iloc[:,1:10].values, var_array)
     y_pred, y_uncer = f_obj(X_sorted)
     y_pred = -y_pred[:,-1]
     y_uncer = np.sqrt(y_uncer[:,-1])
@@ -201,7 +201,7 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     plt.show()
 
 
-def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_denormalizer, x_columns):
+def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, var_array):
     n_steps = 21
     x1x2y_pred, x1x2y_uncer = [[], []]
     for x1 in np.linspace(0, 1, n_steps):
@@ -211,8 +211,8 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_denormalizer, x_column
             x_temp[:, ind2] = x2
             y_pred, y_uncer = f_obj(x_temp)
             y_pred = -y_pred
-            x1_org = x_denormalizer(x_temp)[0, ind1]
-            x2_org = x_denormalizer(x_temp)[0, ind2]
+            x1_org = x_descaler(x_temp, var_array)[0, ind1]
+            x2_org = x_descaler(x_temp, var_array)[0, ind2]
             x1x2y_pred.append([x1_org, x2_org, np.max(y_pred), np.mean(y_pred), np.min(y_pred)])
             x1x2y_uncer.append([x1_org, x2_org, np.max(np.sqrt(y_uncer)), np.mean(np.sqrt(y_uncer)), np.min(np.sqrt(y_uncer))])
 
