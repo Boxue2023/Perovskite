@@ -1,27 +1,65 @@
 import numpy as np 
 from emukit.core import ParameterSpace, ContinuousParameter, DiscreteParameter
 from typing import Union, Tuple
-from emukit.core.acquisition import Acquisition, IntegratedHyperParameterAcquisition
+from emukit.core.acquisition import Acquisition
 from emukit.core.interfaces import IModel, IDifferentiable
 from emukit.core.loop import FixedIntervalUpdater, OuterLoop, SequentialPointCalculator
 from emukit.core.loop.loop_state import create_loop_state
-from emukit.core.optimization import AcquisitionOptimizerBase
 from emukit.core.optimization import GradientAcquisitionOptimizer
 from emukit.bayesian_optimization.acquisitions.log_acquisition import LogAcquisition
 from emukit.bayesian_optimization.local_penalization_calculator import LocalPenalizationPointCalculator
-from emukit.bayesian_optimization.acquisitions import ExpectedImprovement, NegativeLowerConfidenceBound, MaxValueEntropySearch
+from emukit.bayesian_optimization.acquisitions import ExpectedImprovement
 import scipy.stats
 import GPy
 from GPy.models import GPRegression
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
-def get_array_and_len(min, max, step):
-    """ Get array and its length for process condition options. """
-    var = np.arange(min, max + step, step)
-    num = len(var)
+def compute_group_means(df):
+    """ Filter a dataframe so that only a single row is obtained per
+    set of conditions and the mean target values are displayed per set.
 
-    return var, num
+    Args:
+        df (pd.DataFrame): the experimental data
+
+    Returns:
+        pd.DataFrame: the filtered dataframe
+    """
+    # Group the data by the input column and compute mean for target columns
+    grouped_df = df.groupby('Condition').agg({'FF(%)': 'mean', 
+                                               'Eff(%)': 'mean',
+                                              'Jsc(mA/cm^2)': 'mean'}).reset_index()
+    
+    # Create a new DataFrame with one entry for each class based on the input column
+    filtered_df = pd.DataFrame()
+    
+    # Iterate over unique values in the input column
+    for value in df['Condition'].unique():
+        # Filter the grouped DataFrame for the current value
+        class_df = grouped_df[grouped_df['Condition'] == value]
+        
+        # Create a new row with the input column value and means for target columns
+        new_row = pd.DataFrame({'Condition': value,
+                                'FF(%)': class_df['FF(%)'].values[0],
+                                'Eff(%)': class_df['Eff(%)'].values[0],
+                               'Jsc(mA/cm^2)': class_df['Jsc(mA/cm^2)'].values[0]}, index=[0])
+        
+        for column in ['NMP (mL)', 'DMF (mL)', 'DMSO (mL)', 'Perovskite concentration (M)', 
+                       'Annealing temperature (℃)', 'Vacuum Pressure (Pa)', 'Vacuum Pressure time (s)', 
+                       'Temperature (℃)', 'Humidity (%)', 'Voc(V)']:
+            new_row[column] = df.loc[df['Condition'] == value, column].iloc[0]
+        
+        # Append the new row to the filtered DataFrame
+        filtered_df = pd.concat([filtered_df, new_row], ignore_index=True)
+
+    filtered_df = filtered_df[['Condition', 'NMP (mL)', 'DMF (mL)', 'DMSO (mL)', 
+                     'Perovskite concentration (M)', 'Annealing temperature (℃)', 
+                     'Vacuum Pressure (Pa)', 'Vacuum Pressure time (s)', 
+                     'Temperature (℃)', 'Humidity (%)', 'Voc(V)', 'FF(%)', 
+                     'Eff(%)', 'Jsc(mA/cm^2)']]
+
+    return filtered_df
 
 
 def x_scaler(X, var_array):  
@@ -49,38 +87,22 @@ def x_descaler(x_norm, var_array):
     return np.array(x_original)
 
 
-def get_closest_array(suggested_x, var_array):
-    """ Find the array of closest grid points to the points X suggested by the model. """
-    def get_closest_value(given_value, array_list):
-        absolute_difference_function = lambda list_value : abs(list_value - given_value)
-        closest_value = min(array_list, key=absolute_difference_function)
-        return closest_value
-
-    var_list = var_array
-    modified_array = []
-    for x in suggested_x:
-        modified_array.append([get_closest_value(x[i], var_list[i]) for i in range(len(x))])
-        
-    return np.array(modified_array)
-
-
-def define_parameter_space(NMP_num, DMF_num, DMSO_num, PC_num, AT_num, VP_num, VT_num, T_num, humidity_num):
-    """ Define the parameter space for the model. """
-    return ParameterSpace([ContinuousParameter('NMP', 0 - 1 / (NMP_num - 1) / 2, 1 + 1 / (NMP_num - 1) / 2),
-                                ContinuousParameter('DMF', 0 - 1 / (DMF_num - 1) / 2, 1 + 1 / (DMF_num - 1) / 2),
-                                ContinuousParameter('DMSO', 0 - 1 / (DMSO_num - 1) / 2, 1 + 1 / (DMSO_num - 1) / 2),
-                                ContinuousParameter('PC', 0 - 1 / (PC_num - 1) / 2, 1 + 1 / (PC_num - 1) / 2),
-                                ContinuousParameter('AT', 0 - 1 / (AT_num - 1) / 2, 1 + 1 / (AT_num - 1) / 2),
-                                ContinuousParameter('VP', 0 - 1 / (VP_num - 1) / 2, 1 + 1 / (VP_num - 1) / 2),
-                                ContinuousParameter('VT', 0 - 1 / (VT_num - 1) / 2, 1 + 1 / (VT_num - 1) / 2),
-                                ContinuousParameter('T', 0 - 1 / (T_num - 1) / 2, 1 + 1 / (T_num - 1) / 2),
-                                ContinuousParameter('humidity', 0 - 1 / (humidity_num - 1) / 2, 1 + 1 / (humidity_num - 1) / 2),
-                                ])
+def define_parameter_space(NMP_options, DMF_options, DMSO_options, PC_options, AT_options,
+                                    VP_options, VT_options):
+    """ Define the scaled parameter space for the model. """
+    return ParameterSpace([DiscreteParameter('NMP', np.arange(0,1.01, 1/(len(NMP_options)-1))),
+                                DiscreteParameter('DMF', np.arange(0,1.01, 1/(len(DMF_options)-1))),
+                                DiscreteParameter('DMSO', np.arange(0,1.01, 1/(len(DMSO_options)-1))),
+                                DiscreteParameter('PC', np.arange(0,1.01, 1/(len(PC_options)-1))),
+                                DiscreteParameter('AT', np.arange(0,1.01, 1/(len(AT_options)-1))),
+                                DiscreteParameter('VP', np.arange(0,1.01, 1/(len(VP_options)-1))),
+                                DiscreteParameter('VT', np.arange(0,1.01, 1/(len(VT_options)-1))),
+                                ]) 
 
 
 def get_matern52_kernel(input_dim):
     """ Return an instance of the matern52 kernel. """
-    ker = GPy.kern.Matern52(input_dim = input_dim, ARD =True)
+    ker = GPy.kern.Matern52(input_dim = input_dim, ARD = True)
     ker.lengthscale.constrain_bounded(1e-1, 1)
     ker.variance.constrain_bounded(1e-1, 1000.0)
 
@@ -108,7 +130,7 @@ def get_gpr_model(X, Y, ker, set_noise=False):
     return model_gpy
 
 
-def generate_visualization_suggested_process_conditions(df, n_col, var_array):
+def generate_visualization_suggested_process_conditions(df, n_col, descaled_search_space):
     """ Generate bar plots showing the frequency of each process condition in the new sampling suggestions. """
     df_cols = df.columns
     for n in np.arange(0, 8, n_col):
@@ -116,7 +138,7 @@ def generate_visualization_suggested_process_conditions(df, n_col, var_array):
         fs = 20
         for i in np.arange(n_col):
             if n< len(df_cols):
-                axes[i].hist(df.iloc[:,n], bins= 20, range = (min(var_array[n]),max(var_array[n])))####
+                axes[i].hist(df.iloc[:,n], bins= 20, range = (min(descaled_search_space[n]),max(descaled_search_space[n])))
                 axes[i].set_xlabel(df_cols[n], fontsize = 18)
             else:
                 axes[i].axis("off")
@@ -128,7 +150,8 @@ def generate_visualization_suggested_process_conditions(df, n_col, var_array):
         plt.show()
 
 
-def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, acq_cons, acq_produc, var_array):
+def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, 
+                                                       acq_cons, acq_produc, descaled_search_space):
     """ Generate plots of efficiency vs. machine learning conditions."""
     device_eff = df_device.sort_values('Condition').iloc[:,[0,-2]].values
     film_quality = df_film.sort_values('Condition').iloc[:,[0,-1]].values
@@ -147,24 +170,23 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].plot(np.transpose(all_cond)[0], np.maximum.accumulate(np.transpose(all_cond)[1]), 
          marker = 'o', ms = 0, c = 'black')
 
-    X_sorted = x_scaler(df_film.sort_values('Condition').iloc[:,1:10].values, var_array)
+    X_sorted = x_scaler(df_film.sort_values('Condition').iloc[:,1:8].values, descaled_search_space)
     y_pred, y_uncer = f_obj(X_sorted)
     y_pred = -y_pred[:,-1]
     y_uncer = np.sqrt(y_uncer[:,-1])
 
-    axes[0].scatter(np.arange(len(X_sorted)), y_pred,
+    axes[0].scatter(np.arange(1, len(X_sorted) + 1), y_pred,
                 s = 50, facecolors='none', alpha = 0.6, edgecolor = 'gray', label = 'predicted')
-    axes[0].errorbar(np.arange(len(X_sorted)), y_pred, yerr = y_uncer,  
+    axes[0].errorbar(np.arange(1, len(X_sorted) + 1), y_pred, yerr = y_uncer,  
                 ms = 0, ls = '', capsize = 2, alpha = 0.6, color = 'gray', zorder = 0)
-
 
     y_pred_new, y_uncer_new = f_obj(X_new)
     y_pred_new = -y_pred_new[:,-1]
     y_uncer_new = np.sqrt(y_uncer_new[:,-1])
 
-    axes[0].scatter(np.arange(len(X_new))+len(Xc), y_pred_new,
+    axes[0].scatter(np.arange(len(X_new))+len(Xc) + 1, y_pred_new,
                 s = 50, facecolors='none', alpha = 0.6, edgecolor = 'darkgreen', label = 'suggested')
-    axes[0].errorbar(np.arange(len(X_new))+len(Xc), y_pred_new, yerr = y_uncer_new,  
+    axes[0].errorbar(np.arange(len(X_new))+len(Xc) + 1, y_pred_new, yerr = y_uncer_new,  
                  ms = 0, ls = '', capsize = 2, alpha = 0.6, 
                  color = 'darkgreen', zorder = 0)
 
@@ -177,12 +199,12 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].set_xticks(np.arange(0,41,10))
     axes[0].legend(fontsize = fs*0.7)
 
-    axes[1].plot(np.arange(len(X_new))+len(Xc), acq_cons, marker = 'o',
+    axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_cons, marker = 'o',
                 ms = 2, alpha = 0.6, color = 'red', label = 'constr prob')
-    axes[1].plot(np.arange(len(X_new))+len(Xc), acq_fcn/20, marker = 'o',
+    axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_fcn/20, marker = 'o',
                 ms = 2, alpha = 0.6, color = 'navy', label = 'raw acqui')
 
-    axes[1].plot(np.arange(len(X_new))+len(Xc), acq_produc/20, marker = 'o',
+    axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_produc/20, marker = 'o',
                 ms = 2, alpha = 0.6, color = 'darkgreen', label = 'final acqui')
 
 
@@ -200,21 +222,27 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     plt.show()
 
 
-def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, var_array):
+def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, descaled_search_space):
+    """ 
+    Generate contour plots showing the evolution of the objective function with respect to two variables
+
+    (starts by sampling 1000 random points, and then modifies the value for variables ind1 and ind2
+    -> objective function computed for all of those points and max, mean and min determined 
+    -> doing this for a grid of (ind1, ind2)-points enables definition of contour plot for max, mean, min)
+    """
     n_steps = 21
-    x1x2y_pred, x1x2y_uncer = [[], []]
+    x1x2y_pred = []
     for x1 in np.linspace(0, 1, n_steps):
         for x2 in np.linspace(0, 1, n_steps):
             x_temp = np.copy(x_sampled)
             x_temp[:, ind1] = x1
             x_temp[:, ind2] = x2
-            y_pred, y_uncer = f_obj(x_temp)
+            y_pred, _ = f_obj(x_temp)
             y_pred = -y_pred
-            x1_org = x_descaler(x_temp, var_array)[0, ind1]
-            x2_org = x_descaler(x_temp, var_array)[0, ind2]
+            x1_org = x_descaler(x_temp, descaled_search_space)[0, ind1]
+            x2_org = x_descaler(x_temp, descaled_search_space)[0, ind2]
             x1x2y_pred.append([x1_org, x2_org, np.max(y_pred), np.mean(y_pred), np.min(y_pred)])
-            x1x2y_uncer.append([x1_org, x2_org, np.max(np.sqrt(y_uncer)), np.mean(np.sqrt(y_uncer)), np.min(np.sqrt(y_uncer))])
-
+            
     x1 = np.array(x1x2y_pred, dtype=object)[:, 0].reshape(n_steps, n_steps)
     x2 = np.array(x1x2y_pred, dtype=object)[:, 1].reshape(n_steps, n_steps)
 
@@ -228,7 +256,7 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, v
     # Contour for Prediction Efficiency Mean
     fig, axes = plt.subplots(1, 3, figsize=(17, 4), sharey=False, sharex=False)
     fig.subplots_adjust(wspace=0.4, hspace=None)
-    colorbar_offset = [12.5, 7, 4]
+    colorbar_offset = [16, 9, 3]
     for ax, c_offset, y in zip(axes, colorbar_offset,
                                [y_pred_max, y_pred_mean, y_pred_min]):
 
