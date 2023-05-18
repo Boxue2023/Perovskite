@@ -194,7 +194,7 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].set_ylabel('Current Best Efficiency', fontsize = 20)
     axes[0].set_xlabel('Process Condition', fontsize = 20)
 
-    axes[0].set_ylim(-1, 25)
+    axes[0].set_ylim(-1, 30)
     axes[0].set_xlim(-1, 45)
     axes[0].set_xticks(np.arange(0,41,10))
     axes[0].legend(fontsize = fs*0.7)
