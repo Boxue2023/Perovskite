@@ -1,0 +1,16 @@
+name: perovskite
+channels:
+  - anaconda
+  - conda-forge
+  - defaults
+dependencies:
+  - openpyxl
+  - sklearn
+  - gpy
+  - pydoe
+  - ipykernel
+  - pandas
+  - seaborn
+  - pip=22.1
+  - pip:
+    - emukit
