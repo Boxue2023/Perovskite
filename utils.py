@@ -130,7 +130,7 @@ def get_gpr_model(X, Y, ker, set_noise=False):
     return model_gpy
 
 
-def generate_visualization_suggested_process_conditions(df, n_col, descaled_search_space):
+def generate_visualization_process_conditions(df, n_col, descaled_search_space):
     """ Generate bar plots showing the frequency of each process condition in the new sampling suggestions. """
     df_cols = df.columns
     for n in np.arange(0, 8, n_col):
@@ -151,7 +151,7 @@ def generate_visualization_suggested_process_conditions(df, n_col, descaled_sear
 
 
 def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, 
-                                                       acq_cons, acq_produc, descaled_search_space):
+                                                       acq_cons, acq_produc, descaled_search_space, xlim=45):
     """ Generate plots of efficiency vs. machine learning conditions."""
     device_eff = df_device.sort_values('Condition').iloc[:,[0,-2]].values
     film_quality = df_film.sort_values('Condition').iloc[:,[0,-1]].values
@@ -195,8 +195,8 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].set_xlabel('Process Condition', fontsize = 20)
 
     axes[0].set_ylim(-1, 30)
-    axes[0].set_xlim(-1, 45)
-    axes[0].set_xticks(np.arange(0,41,10))
+    axes[0].set_xlim(-1, xlim)
+    axes[0].set_xticks(np.arange(0,xlim,10))
     axes[0].legend(fontsize = fs*0.7)
 
     axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_cons, marker = 'o',
@@ -209,8 +209,8 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
 
 
     axes[1].set_ylim(0.0, 2)
-    axes[1].set_xlim(-1, 45)
-    axes[1].set_xticks(np.arange(0,45,10))
+    axes[1].set_xlim(-1, xlim)
+    axes[1].set_xticks(np.arange(0,xlim,10))
     axes[1].set_ylabel('Acquisition Probability', fontsize = fs)
     axes[1].set_xlabel('Process Condition', fontsize = fs)
 
