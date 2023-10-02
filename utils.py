@@ -130,24 +130,38 @@ def get_gpr_model(X, Y, ker, set_noise=False):
     return model_gpy
 
 
-def generate_visualization_process_conditions(df, n_col, descaled_search_space):
-    """ Generate bar plots showing the frequency of each process condition in the new sampling suggestions. """
+def generate_visualization_process_conditions(df, descaled_search_space, name=None, n_panel=4):
+    """ Generate a multi-panel figure with bar plots showing the frequency of each process condition. """
     df_cols = df.columns
-    for n in np.arange(0, 8, n_col):
-        fig,axes = plt.subplots(1, n_col, figsize=(18, 3.5), sharey = False)
-        fs = 20
-        for i in np.arange(n_col):
-            if n< len(df_cols):
-                axes[i].hist(df.iloc[:,n], bins= 20, range = (min(descaled_search_space[n]),max(descaled_search_space[n])))
-                axes[i].set_xlabel(df_cols[n], fontsize = 18)
-            else:
-                axes[i].axis("off")
-            n = n+1      
-        axes[0].set_ylabel('counts', fontsize = 18)
-        for i in range(len(axes)):
-            axes[i].tick_params(direction='in', length=5, width=1, labelsize = fs*.8, grid_alpha = 0.5)
-            axes[i].grid(True, linestyle='-.')
-        plt.show()
+    n_col = len(df_cols)  # Set n_col to the number of columns in the DataFrame
+    num_rows = (n_col + 2) // n_panel  # Calculate the number of rows needed for a 'n_panel'-column layout
+    fig, axes = plt.subplots(num_rows, n_panel, figsize=(18, 3.5 * num_rows), sharey=False)
+    fs = 24
+
+    for i, col_name in enumerate(df_cols):
+        row_idx = i // n_panel
+        col_idx = i % n_panel
+
+        ax = axes[row_idx, col_idx]
+        ax.hist(df[col_name], bins=20, range=(min(descaled_search_space[i]), max(descaled_search_space[i])), color='dodgerblue', edgecolor='black', alpha=0.9)
+        ax.set_xlabel(col_name, fontsize=fs*0.8)
+        ax.tick_params(direction='in', length=5, width=1, labelsize=fs * 0.8, grid_alpha=0.5, pad=10)
+
+    # Hide empty subplots
+    for i in range(n_col, num_rows * n_panel):
+        row_idx = i // n_panel
+        col_idx = i % n_panel
+        fig.delaxes(axes[row_idx, col_idx])
+
+    for i in range(num_rows):
+        axes[i, 0].set_ylabel('count', fontsize=fs*0.8)
+
+    # Adjust spacing between subplots
+    plt.tight_layout()
+
+    # Save the figure
+    plt.savefig(f'multi_panel_bar_plots_{name}.png', dpi=600)
+    plt.show()
 
 
 def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_film, f_obj, acq_fcn, 
@@ -185,14 +199,14 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     y_uncer_new = np.sqrt(y_uncer_new[:,-1])
 
     axes[0].scatter(np.arange(len(X_new))+len(Xc) + 1, y_pred_new,
-                s = 50, facecolors='none', alpha = 0.6, edgecolor = 'darkgreen', label = 'suggested')
+                s = 50, facecolors='none', alpha = 0.6, edgecolor = 'crimson', label = 'suggested')
     axes[0].errorbar(np.arange(len(X_new))+len(Xc) + 1, y_pred_new, yerr = y_uncer_new,  
                  ms = 0, ls = '', capsize = 2, alpha = 0.6, 
-                 color = 'darkgreen', zorder = 0)
+                 color = 'crimson', zorder = 0)
 
 
-    axes[0].set_ylabel('Current Best Efficiency', fontsize = 20)
-    axes[0].set_xlabel('Process Condition', fontsize = 20)
+    axes[0].set_ylabel('PCE (%)', fontsize = 20)
+    axes[0].set_xlabel('Process condition', fontsize = 20)
 
     axes[0].set_ylim(-1, 30)
     axes[0].set_xlim(-1, xlim)
@@ -200,23 +214,22 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
     axes[0].legend(fontsize = fs*0.7)
 
     axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_cons, marker = 'o',
-                ms = 2, alpha = 0.6, color = 'red', label = 'constr prob')
+                ms = 2, alpha = 0.6, color = 'crimson', label = 'constr prob')
     axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_fcn/20, marker = 'o',
                 ms = 2, alpha = 0.6, color = 'navy', label = 'raw acqui')
 
     axes[1].plot(np.arange(len(X_new))+len(Xc) + 1, acq_produc/20, marker = 'o',
-                ms = 2, alpha = 0.6, color = 'darkgreen', label = 'final acqui')
+                ms = 2, alpha = 0.6, color = 'royalblue', label = 'final acqui')
 
 
     axes[1].set_ylim(0.0, 2)
-    axes[1].set_xlim(-1, xlim)
-    axes[1].set_xticks(np.arange(0,xlim,10))
-    axes[1].set_ylabel('Acquisition Probability', fontsize = fs)
-    axes[1].set_xlabel('Process Condition', fontsize = fs)
+    axes[1].set_xlim(xlim-26, xlim-4)
+    axes[1].set_xticks(np.arange(xlim-25,xlim-4,10))
+    axes[1].set_ylabel('Acquisition probability', fontsize = fs)
+    axes[1].set_xlabel('Process condition', fontsize = fs)
 
     for ax in axes:
         ax.tick_params(direction='in', length=5, width=1, labelsize = fs*.8, grid_alpha = 0.5)
-        ax.grid(True, linestyle='-.')
     plt.subplots_adjust(wspace = 0.4)
     plt.legend(fontsize = fs*0.7)
     plt.show()
@@ -260,21 +273,16 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, d
     for ax, c_offset, y in zip(axes, colorbar_offset,
                                [y_pred_max, y_pred_mean, y_pred_min]):
 
-        c_plt1 = ax.contourf(x1, x2, y, levels=np.arange(19) * 0.25 + c_offset, cmap='plasma', extend = 'both')
+        c_plt1 = ax.contourf(x1, x2, y, levels=np.arange(19) * 0.25 + c_offset, cmap='coolwarm', extend = 'both')
         cbar = fig.colorbar(c_plt1, ax=ax)
         cbar.ax.tick_params(labelsize=fs * 0.8)
         ax.set_xlabel(str(x_columns[ind1]), fontsize=fs)
         ax.set_ylabel(str(x_columns[ind2]), fontsize=fs)
-
-        x1_delta = (np.max(x1) - np.min(x1)) * 0.05
-        x2_delta = (np.max(x2) - np.min(x2)) * 0.05
-        ax.set_xlim(np.min(x1) - x1_delta, np.max(x1) + x1_delta)
-        ax.set_ylim(np.min(x2) - x2_delta, np.max(x2) + x2_delta)
         ax.tick_params(direction='in', length=5, width=1, labelsize=fs * 0.8)
 
-    axes[0].set_title('objective fcn max', pad=title_pad, fontsize=fs)
-    axes[1].set_title('objective fcn mean', pad=title_pad, fontsize=fs)
-    axes[2].set_title('objective fcn min', pad=title_pad, fontsize=fs)
+    axes[0].set_title('Objective fcn max', pad=title_pad, fontsize=fs)
+    axes[1].set_title('Objective fcn mean', pad=title_pad, fontsize=fs)
+    axes[2].set_title('Objective fcn min', pad=title_pad, fontsize=fs)
     plt.show()
 
 
