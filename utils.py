@@ -160,7 +160,8 @@ def generate_visualization_process_conditions(df, descaled_search_space, name=No
     plt.tight_layout()
 
     # Save the figure
-    plt.savefig(f'multi_panel_bar_plots_{name}.png', dpi=600)
+    #plt.savefig(f'multi_panel_bar_plots_{name}.png', dpi=600)
+    plt.savefig(f'multi_panel_bar_plots_{name}.svg', format='svg')
     plt.show()
 
 
@@ -232,6 +233,7 @@ def generate_visualization_efficiency_vs_ml_conditions(X_new, Xc, df_device, df_
         ax.tick_params(direction='in', length=5, width=1, labelsize = fs*.8, grid_alpha = 0.5)
     plt.subplots_adjust(wspace = 0.4)
     plt.legend(fontsize = fs*0.7)
+    plt.savefig(f'efficiency_vs_ml_conditions.svg', format='svg')
     plt.show()
 
 
@@ -283,6 +285,7 @@ def generate_contour_plot(ind1, ind2, x_sampled, f_obj, x_descaler, x_columns, d
     axes[0].set_title('Objective fcn max', pad=title_pad, fontsize=fs)
     axes[1].set_title('Objective fcn mean', pad=title_pad, fontsize=fs)
     axes[2].set_title('Objective fcn min', pad=title_pad, fontsize=fs)
+    plt.savefig(f'contour_plot_{ind1}_{ind2}.svg', format='svg')
     plt.show()
 
 
